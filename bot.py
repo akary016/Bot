@@ -13,7 +13,7 @@ intents = discord.Intents.default()
 intents.members = True
 intents.message_content = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="*", intents=intents)
 
 DB_PATH = os.getenv("DB_PATH", "bot.db")
 conn = sqlite3.connect(DB_PATH)
