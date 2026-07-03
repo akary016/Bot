@@ -11,6 +11,8 @@ from discord.ext import commands
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 TOKEN = os.getenv("DISCORD_TOKEN")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_MODEL = "llama-3.3-70b-versatile"
 
 intents = discord.Intents.default()
 intents.members = True
@@ -166,6 +168,32 @@ def fmt_timedelta(td: timedelta) -> str:
     return f"{s}s"
 
 
+async def ask_ia(prompt: str) -> str:
+    if not GROQ_API_KEY:
+        return "⚠️ IA não configurada (falta GROQ_API_KEY nas variáveis de ambiente)."
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
+    payload = {
+        "model": GROQ_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 500,
+    }
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=20)) as resp:
+                data = await resp.json()
+                if resp.status != 200:
+                    erro = data.get("error", {}).get("message", "erro desconhecido")
+                    return f"⚠️ Erro da IA: {erro}"
+                escolhas = data.get("choices", [])
+                if not escolhas:
+                    return "⚠️ A IA não retornou nenhuma resposta."
+                texto = escolhas[0].get("message", {}).get("content", "").strip()
+                return texto or "⚠️ A IA não retornou nenhuma resposta."
+    except Exception as e:
+        return f"⚠️ Erro ao contatar a IA: {e}"
+
+
 @bot.event
 async def on_ready():
     await bot.tree.sync()
@@ -192,6 +220,18 @@ async def on_member_join(member: discord.Member):
 async def on_message(message: discord.Message):
     if message.author.bot or not message.guild:
         return
+
+    if bot.user in message.mentions:
+        pergunta = message.content
+        for mention in (f"<@{bot.user.id}>", f"<@!{bot.user.id}>"):
+            pergunta = pergunta.replace(mention, "")
+        pergunta = pergunta.strip()
+        if pergunta:
+            async with message.channel.typing():
+                resposta = await ask_ia(pergunta)
+            for i in range(0, len(resposta), 2000):
+                await message.reply(resposta[i:i + 2000], mention_author=False)
+
     level, leveled_up = add_xp(message.guild.id, message.author.id, random.randint(5, 15))
     if leveled_up:
         embed = discord.Embed(
