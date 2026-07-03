@@ -512,3 +512,28 @@ async def unmute(interaction: discord.Interaction, membro: discord.Member):
 @bot.tree.command(name="clear", description="Limpa mensagens no canal (mod)")
 @app_commands.describe(quantidade="Quantidade de mensagens a apagar (máx 100)")
 @app_commands.checks.has_
+async def warn(interaction: discord.Interaction, membro: discord.Member, motivo: str):
+    try:
+        await membro.send(f"⚠️ Você recebeu uma advertência em **{interaction.guild.name}**. Motivo: {motivo}")
+    except discord.Forbidden:
+        pass
+    embed = discord.Embed(description=f"⚠️ {membro.mention} foi advertido. Motivo: {motivo}", color=COLOR_DANGER)
+    await interaction.response.send_message(embed=embed)
+
+
+# ---------- Tratamento de erros de permissão ----------
+
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message("Você não tem permissão para usar esse comando.", ephemeral=True)
+    else:
+        await interaction.response.send_message(f"Ocorreu um erro: {error}", ephemeral=True)
+        raise error
+
+
+if __name__ == "__main__":
+    if not TOKEN:
+        raise SystemExit("Defina a variável de ambiente DISCORD_TOKEN antes de rodar o bot.")
+    bot.run(TOKEN)
+    
