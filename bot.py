@@ -1,6 +1,5 @@
 import os
 import io
-import sqlite3
 import random
 from datetime import timedelta, datetime, timezone
 
@@ -9,6 +8,12 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from PIL import Image, ImageDraw, ImageFont, ImageOps
+
+try:
+    import libsql_experimental as libsql
+except ImportError:
+    libsql = None
+import sqlite3
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -19,6 +24,7 @@ intents.members = True
 intents.message_content = True
 
 bot = commands.Bot(command_prefix="*", intents=intents)
+ia_cooldowns: dict[int, datetime] = {}
 
 # ---------- Tema visual ----------
 COLOR_PRIMARY = discord.Color.from_rgb(155, 89, 217)   # roxo
@@ -32,7 +38,17 @@ BG_BOTTOM = (80, 40, 120)
 ACCENT = (255, 200, 60)
 
 DB_PATH = os.getenv("DB_PATH", "bot.db")
-conn = sqlite3.connect(DB_PATH)
+TURSO_DATABASE_URL = os.getenv("TURSO_DATABASE_URL")
+TURSO_AUTH_TOKEN = os.getenv("TURSO_AUTH_TOKEN")
+
+if TURSO_DATABASE_URL and libsql is not None:
+    conn = libsql.connect(DB_PATH, sync_url=TURSO_DATABASE_URL, auth_token=TURSO_AUTH_TOKEN)
+    conn.sync()
+    print("Conectado ao Turso (banco remoto persistente).")
+else:
+    conn = sqlite3.connect(DB_PATH)
+    print("TURSO_DATABASE_URL não definida — usando SQLite local (não persiste em deploys no Render).")
+
 cur = conn.cursor()
 cur.execute(
     """
@@ -222,15 +238,21 @@ async def on_message(message: discord.Message):
         return
 
     if bot.user in message.mentions:
-        pergunta = message.content
-        for mention in (f"<@{bot.user.id}>", f"<@!{bot.user.id}>"):
-            pergunta = pergunta.replace(mention, "")
-        pergunta = pergunta.strip()
-        if pergunta:
-            async with message.channel.typing():
-                resposta = await ask_ia(pergunta)
-            for i in range(0, len(resposta), 2000):
-                await message.reply(resposta[i:i + 2000], mention_author=False)
+        agora = datetime.now(timezone.utc)
+        ultimo = ia_cooldowns.get(message.author.id)
+        if ultimo and (agora - ultimo) < timedelta(seconds=15):
+            await message.reply("⏳ Espera um pouco antes de falar comigo de novo.", mention_author=False)
+        else:
+            ia_cooldowns[message.author.id] = agora
+            pergunta = message.content
+            for mention in (f"<@{bot.user.id}>", f"<@!{bot.user.id}>"):
+                pergunta = pergunta.replace(mention, "")
+            pergunta = pergunta.strip()
+            if pergunta:
+                async with message.channel.typing():
+                    resposta = await ask_ia(pergunta)
+                for i in range(0, len(resposta), 2000):
+                    await message.reply(resposta[i:i + 2000], mention_author=False)
 
     level, leveled_up = add_xp(message.guild.id, message.author.id, random.randint(5, 15))
     if leveled_up:
