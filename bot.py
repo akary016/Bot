@@ -256,6 +256,8 @@ async def on_message(message: discord.Message):
     if message.author.bot or not message.guild:
         return
 
+    print(f"[DEBUG] Mensagem recebida | mencionado={bot.user in message.mentions} | conteudo='{message.content}'")
+
     if bot.user in message.mentions:
         agora = datetime.now(timezone.utc)
         ultimo = ia_cooldowns.get(message.author.id)
