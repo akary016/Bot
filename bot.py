@@ -1,6 +1,8 @@
 import os
 import io
 import random
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from datetime import timedelta, datetime, timezone
 
 import aiohttp
@@ -18,6 +20,23 @@ import sqlite3
 TOKEN = os.getenv("DISCORD_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_MODEL = "llama-3.3-70b-versatile"
+
+
+class _HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
+
+    def log_message(self, format, *args):
+        pass  # silencia os logs de HTTP no console
+
+
+def start_health_server():
+    port = int(os.getenv("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), _HealthHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    print(f"Servidor de health check ouvindo na porta {port}")
 
 intents = discord.Intents.default()
 intents.members = True
@@ -608,4 +627,5 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
 if __name__ == "__main__":
     if not TOKEN:
         raise SystemExit("Defina a variável de ambiente DISCORD_TOKEN antes de rodar o bot.")
+    start_health_server()
     bot.run(TOKEN)
